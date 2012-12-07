@@ -116,7 +116,7 @@
         {:keys [stmt env cols]} pred
         aggregates (set (map nskeyword (find-aggregates this)))
         colnames (set (remove #(.contains % ".")
-                              (map nskeyword cols)))
+                              (map #(escape-name (nskeyword %)) cols)))
         qualify? (set/difference colnames aggregates)]
     (predicate
      (map #(if (qualify? %) (str (to-tablealias (:tname this))
