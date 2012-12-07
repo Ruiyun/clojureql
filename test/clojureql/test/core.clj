@@ -140,7 +140,13 @@
          "SELECT users.id FROM users WHERE ((users.id != 5) AND ((users.id > 10) OR (users.id < 20)))"
          (-> (table :users)
              (select (where (= :lower/name "bob"))))
-         "SELECT users.* FROM users WHERE (lower(name) = bob)"))
+         "SELECT users.* FROM users WHERE (lower(name) = bob)"
+         (-> (table :users)
+             (select (where (= :second-id 5))))
+         "SELECT users.* FROM users WHERE (users.\"second-id\" = 5)"
+         (-> (table :vip-users)
+             (select (where (and (!= :id 5) (> :vip-years 2) (= :second-id 4)))))
+         "SELECT \"vip-users\".* FROM \"vip-users\" WHERE ((\"vip-users\".id != 5) AND (\"vip-users\".\"vip-years\" > 2) AND (\"vip-users\".\"second-id\" = 4))"))
 
   (testing "Nested where predicates"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)

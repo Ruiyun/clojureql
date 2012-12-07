@@ -67,7 +67,8 @@
                        (not (empty? tname)))
                  (str (nskeyword tname) \.) "")
                (escape-name (nskeyword colname)))
-          (.replaceAll "\\.\\." "\\.")))))
+          (.replaceAll "\\.\\." "\\.")
+          (.replaceAll "\"\"" "\"")))))
 
 (defn aggregate? [c]
   (let [c (if (vector? c) (first c) c)]
