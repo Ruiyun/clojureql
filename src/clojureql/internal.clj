@@ -47,7 +47,7 @@
 (defn qualified? [c]
   (.contains (nskeyword c) "."))
 
-(defn escape-name
+(defn doube-quote-wrap
   [n]
   (if (.contains n "-")
     (str "\"" n "\"")
@@ -59,14 +59,14 @@
                   (-> tname vals first)
                   tname)
         colname (if (vector? colname)
-                  (str (escape-name (-> colname first nskeyword)) " AS " (escape-name (-> colname last nskeyword)))
+                  (str (doube-quote-wrap (-> colname first nskeyword)) " AS " (doube-quote-wrap (-> colname last nskeyword)))
                   colname)]
     (if (qualified? colname)
       (nskeyword colname)
       (-> (str (if (or (keyword? tname)
                        (not (empty? tname)))
                  (str (nskeyword tname) \.) "")
-               (escape-name (nskeyword colname)))
+               (doube-quote-wrap (nskeyword colname)))
           (.replaceAll "\\.\\." "\\.")
           (.replaceAll "\"\"" "\"")))))
 
@@ -151,7 +151,7 @@
          (str "'" c "'")
          (if (aggregate? c)
            (let [[aggr col] (-> (nskeyword c) (.split "/"))]
-             (str aggr "(" (split-fields p (escape-name col)) ")"))
+             (str aggr "(" (split-fields p (doube-quote-wrap col)) ")"))
            (add-tname p c))))))
 
 (defn to-tablealias
