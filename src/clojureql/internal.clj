@@ -34,12 +34,19 @@
       s
       (recur (.replace s "  " " ")))))
 
+(defn double-quote-wrap
+  [n]
+  (if (.contains n "-")
+    (str "\"" n "\"")
+    n))
+
 (defn nskeyword
   "Converts a namespace qualified keyword to a string"
   [k]
   (if (string? k)
     k
-    (let [[kns nm] ((juxt namespace name) k)]
+    (let [[kns nm] ((juxt namespace name) k)
+          nm (clojure.string/join \. (map double-quote-wrap (clojure.string/split nm #"\.")))]
       (if kns
         (apply str (interpose "/" [kns nm]))
         nm))))
@@ -47,28 +54,21 @@
 (defn qualified? [c]
   (.contains (nskeyword c) "."))
 
-(defn doube-quote-wrap
-  [n]
-  (if (.contains n "-")
-    (str "\"" n "\"")
-    n))
-
 (defn add-tname
   [tname colname]
   (let [tname   (if (map? tname)
                   (-> tname vals first)
                   tname)
         colname (if (vector? colname)
-                  (str (doube-quote-wrap (-> colname first nskeyword)) " AS " (doube-quote-wrap (-> colname last nskeyword)))
+                  (str (-> colname first nskeyword) " AS " (-> colname last nskeyword))
                   colname)]
     (if (qualified? colname)
       (nskeyword colname)
       (-> (str (if (or (keyword? tname)
                        (not (empty? tname)))
                  (str (nskeyword tname) \.) "")
-               (doube-quote-wrap (nskeyword colname)))
-          (.replaceAll "\\.\\." "\\.")
-          (.replaceAll "\"\"" "\"")))))
+               (nskeyword colname))
+          (.replaceAll "\\.\\." "\\.")))))
 
 (defn aggregate? [c]
   (let [c (if (vector? c) (first c) c)]
@@ -151,7 +151,7 @@
          (str "'" c "'")
          (if (aggregate? c)
            (let [[aggr col] (-> (nskeyword c) (.split "/"))]
-             (str aggr "(" (split-fields p (doube-quote-wrap col)) ")"))
+             (str aggr "(" (split-fields p col) ")"))
            (add-tname p c))))))
 
 (defn to-tablealias

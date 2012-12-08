@@ -94,12 +94,20 @@
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (table :users)
          "SELECT users.* FROM users"
+         (table :vip-users)
+         "SELECT \"vip-users\".* FROM \"vip-users\""
          (-> (table :users) (project [:id :name]))
          "SELECT users.id,users.name FROM users"
+         (-> (table :users) (project [:second-id :last-name]))
+         "SELECT users.\"second-id\",users.\"last-name\" FROM users"
          (-> (table :users) (aggregate [:avg/wage]))
          "SELECT avg(users.wage) FROM users"
+         (-> (table :vip-users) (aggregate [:avg/vip-years]))
+         "SELECT avg(\"vip-users\".\"vip-years\") FROM \"vip-users\""
          (-> (table :users) (aggregate [[:avg/wage :as :avg]]))
-         "SELECT avg(users.wage) AS avg FROM users"))
+         "SELECT avg(users.wage) AS avg FROM users"
+         (-> (table :vip-users) (aggregate [[:avg/vip-years :as :v-years]]))
+         "SELECT avg(\"vip-users\".\"vip-years\") AS \"v-years\" FROM \"vip-users\""))
 
   (testing "modifiers"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -180,10 +188,18 @@
              (join (table :salary) :id)
              (project [:users.id :salary.wage]))
          "SELECT users.id,salary.wage FROM users JOIN salary USING(id)"
+         (-> (table :vip-users)
+             (join (table :year-end-bonus) :id)
+             (project [:vip-users.id :year-end-bonus.bonus-amount]))
+         "SELECT \"vip-users\".id,\"year-end-bonus\".\"bonus-amount\" FROM \"vip-users\" JOIN \"year-end-bonus\" USING(id)"
          (-> (table :users)
              (join (table :salary) (where (= :users.id :salary.id)))
              (project [:users.id :salary.wage]))
-         "SELECT users.id,salary.wage FROM users JOIN salary ON (users.id = salary.id)"))
+         "SELECT users.id,salary.wage FROM users JOIN salary ON (users.id = salary.id)"
+         (-> (table :vip-users)
+             (join (table :salary) (where (= :vip-users.second-id :salary.total-wage)))
+             (project [:vip-users.second-id :salary.wage]))
+         "SELECT \"vip-users\".\"second-id\",salary.wage FROM \"vip-users\" JOIN salary ON (\"vip-users\".\"second-id\" = salary.\"total-wage\")"))
 
   (testing "ordering in joins"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
