@@ -1,4 +1,4 @@
-(defproject Ruiyun/clojureql "1.0.4a"
+(defproject ruiyun/clojureql "1.0.4a"
   :description      "Superior SQL integration for Clojure"
   :dependencies     [[org.clojure/clojure         "1.4.0"]
                      [org.clojure/core.incubator  "0.1.1"]
