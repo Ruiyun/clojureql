@@ -154,7 +154,8 @@
          "SELECT users.* FROM users WHERE (users.\"second-id\" = 5)"
          (-> (table :vip-users)
              (select (where (and (!= :id 5) (> :vip-years 2) (= :second-id 4)))))
-         "SELECT \"vip-users\".* FROM \"vip-users\" WHERE ((\"vip-users\".id != 5) AND (\"vip-users\".\"vip-years\" > 2) AND (\"vip-users\".\"second-id\" = 4))"))
+         (str  "SELECT \"vip-users\".* FROM \"vip-users\" WHERE ((\"vip-users\".id != 5) "
+               "AND (\"vip-users\".\"vip-years\" > 2) AND (\"vip-users\".\"second-id\" = 4))")))
 
   (testing "Nested where predicates"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -180,7 +181,12 @@
          (-> (table :users)
              (join (table :salary) (where (= :users.id :salary.id)))
              (project [:salary.wage :as :something]))
-         "SELECT salary.wage AS something FROM users JOIN salary ON (users.id = salary.id)"))
+         "SELECT salary.wage AS something FROM users JOIN salary ON (users.id = salary.id)"
+         (-> (table :vip-users)
+             (join (table :year-end-bonus) (where (= :vip-users.second-id :year-end-bonus.id)))
+             (project [:year-end-bonus.bonus-amount :as :other-thing]))
+         (str "SELECT \"year-end-bonus\".\"bonus-amount\" AS \"other-thing\" FROM \"vip-users\" "
+              "JOIN \"year-end-bonus\" ON (\"vip-users\".\"second-id\" = \"year-end-bonus\".id)")))
 
   (testing "joins"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -199,21 +205,34 @@
          (-> (table :vip-users)
              (join (table :salary) (where (= :vip-users.second-id :salary.total-wage)))
              (project [:vip-users.second-id :salary.wage]))
-         "SELECT \"vip-users\".\"second-id\",salary.wage FROM \"vip-users\" JOIN salary ON (\"vip-users\".\"second-id\" = salary.\"total-wage\")"))
+         (str "SELECT \"vip-users\".\"second-id\",salary.wage FROM \"vip-users\" "
+              "JOIN salary ON (\"vip-users\".\"second-id\" = salary.\"total-wage\")")))
 
   (testing "ordering in joins"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (-> (table :users)
              (join (table :salary) (where (= :wages.id :salary.id)))
              (join (table :wages) (where (= :wages.id :users.id))))
-         "SELECT users.*,salary.*,wages.* FROM users JOIN wages ON (wages.id = users.id) JOIN salary ON (wages.id = salary.id)"))
+         "SELECT users.*,salary.*,wages.* FROM users JOIN wages ON (wages.id = users.id) JOIN salary ON (wages.id = salary.id)"
+         (-> (table :vip-users)
+             (join (table :year-end-bonus) (where (= :the-amount.a-id :year-end-bonus.id)))
+             (join (table :the-amount) (where (= :the-amount.a-id :vip-users.id))))
+         (str "SELECT \"vip-users\".*,\"year-end-bonus\".*,\"the-amount\".* FROM \"vip-users\" "
+              "JOIN \"year-end-bonus\" ON (\"the-amount\".\"a-id\" = \"year-end-bonus\".id) "
+              "JOIN \"the-amount\" ON (\"the-amount\".\"a-id\" = \"vip-users\".id)")))
 
   (testing "ordering in joins with table alias"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (-> (table {:users :u})
              (join (table {:salary :s}) (where (= :w.id :s.id)))
              (join (table {:wages :w}) (where (= :w.id :u.id))))
-         "SELECT u.*,s.*,w.* FROM users u JOIN wages w ON (w.id = u.id) JOIN salary s ON (w.id = s.id)"))
+         "SELECT u.*,s.*,w.* FROM users u JOIN wages w ON (w.id = u.id) JOIN salary s ON (w.id = s.id)"
+         (-> (table {:vip-users :v-users})
+             (join (table {:year-end-bonus :y}) (where (= :w.id :y.b-id)))
+             (join (table {:wages :w-1}) (where (= :w-1.id :v-users.second-id))))
+         (str "SELECT \"v-users\".*,y.*,\"w-1\".* FROM \"vip-users\" \"v-users\" "
+              "JOIN \"year-end-bonus\" y ON (w.id = y.\"b-id\") "
+              "JOIN wages \"w-1\" ON (\"w-1\".id = \"v-users\".\"second-id\")")))
 
   (testing "renaming in joins"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -313,108 +332,108 @@
 
   (testing "joins are associative"
     (let [ta (join (table :t1) (table :t2) :id)
-	  tb (join (table :t3) ta :id)] ;; swapping argument order of "ta" and "(table :t3)" works
+          tb (join (table :t3) ta :id)] ;; swapping argument order of "ta" and "(table :t3)" works
       (are [x y] (= (-> x (compile nil) interpolate-sql (.replaceAll "SELECT .* FROM" "SELECT * FROM")) y)
-	   tb
-	   "SELECT * FROM t3 JOIN t1 USING(id) JOIN t2 USING(id)"))
+           tb
+           "SELECT * FROM t3 JOIN t1 USING(id) JOIN t2 USING(id)"))
     (let [ta (-> (table :t1)
-		 (join (table :t2) (where (= :t1.a :t2.a)))
-		 (join (table :t6) (where (= :t6.e :t2.e))))
-	  tb (-> (table :t3)
-		 (join (table :t4) (where (= :t3.b :t4.b)))
-		 (join (table :t5) (where (= :t5.d :t4.d))))
-	  qu (join ta tb (where (= :t3.c :t2.c)))]
+                 (join (table :t2) (where (= :t1.a :t2.a)))
+                 (join (table :t6) (where (= :t6.e :t2.e))))
+          tb (-> (table :t3)
+                 (join (table :t4) (where (= :t3.b :t4.b)))
+                 (join (table :t5) (where (= :t5.d :t4.d))))
+          qu (join ta tb (where (= :t3.c :t2.c)))]
       (are [x y] (= (-> x (compile nil) interpolate-sql (.replaceAll "SELECT .* FROM" "SELECT * FROM")) y)
-	   qu
-	   (str "SELECT * FROM t1 "
-		"JOIN t2 ON (t1.a = t2.a) "
-		"JOIN t6 ON (t6.e = t2.e) "
-		"JOIN t3 ON (t3.c = t2.c) "
-		"JOIN t4 ON (t3.b = t4.b) "
-		"JOIN t5 ON (t5.d = t4.d)")))
+           qu
+           (str "SELECT * FROM t1 "
+                "JOIN t2 ON (t1.a = t2.a) "
+                "JOIN t6 ON (t6.e = t2.e) "
+                "JOIN t3 ON (t3.c = t2.c) "
+                "JOIN t4 ON (t3.b = t4.b) "
+                "JOIN t5 ON (t5.d = t4.d)")))
     (let [product-variants-table (project (table :product_variants)
-					      [[:id			:as :product_variant_id]
-					       [:product_id		:as :product_variant_product_id]
-					       [:product_code		:as :product_variant_product_code]
-					       [:status			:as :product_variant_status]
-					       [:price_id		:as :product_variant_price_id]])
-	  products-table (project (table :products)
-				      [[:id				:as :product_id]
-				       [:name				:as :product_name]
-				       [:description			:as :product_description]
-				       [:manufacturer_id		:as :product_manufacturer_id]])
-	  product-variant-skus-table (project (table :product_variant_skus)
-						  [[:id			:as :product_variant_sku_id]
-						   [:product_variant_id	:as :product_variant_sku_product_variant_id]
-						   [:sku_id		:as :product_variant_sku_sku_id]
-						   [:quantity		:as :product_variant_sku_quantity]])
-	  orders-table   (project (table :orders)
-				      [[:id				:as :order_id]
-				       [:customer_id			:as :order_customer_id]
-				       [:customer_ref			:as :order_customer_ref]
-				       [:created			:as :order_created]
-				       [:status				:as :order_status]
-				       [:created_by			:as :order_created_by]
-				       [:source_id			:as :order_source_id]
-				       [:updated			:as :order_updated]
-				       [:cancellation_reason_id		:as :order_cancellation_reason_id]
-				       [:expirable			:as :order_expirable]
-				       [:shipping_method_id		:as :order_shipping_method_id]])
-	  order-lines-table (project (table :order_lines)
-					 [[:id				:as :order_line_id]
-					  [:order_id			:as :order_line_order_id]
-					  [:product_variant_id		:as :order_line_product_variant_id]
-					  [:quantity			:as :order_line_quantity]
-					  [:status			:as :order_line_status]
-					  [:updated			:as :order_line_updated]
-					  [:price_id			:as :order_line_price_id]
-					  [:shippable_estimate		:as :order_line_shippable_estimate]])
-	  orders-with-lines-query (-> orders-table
-				      (join order-lines-table (where (= :orders.id :order_lines.order_id))))
-	  sku-table (project (table :skus) [[:id		:as :sku_id]
-						    [:stock_code	:as :sku_stock_code]
-						    [:barcode		:as :sku_barcode]
-						    [:reorder_quantity	:as :sku_reorder_quantity]
-						    [:minimum_level	:as :sku_minimum_level]])
-	  products-with-skus-query (-> product-variants-table
-				       (join products-table (where (= :products.id :product_variants.product_id)))
-				       (join product-variant-skus-table (where (= :product_variants.id :product_variant_skus.product_variant_id)))
-				       (join sku-table (where (= :skus.id :product_variant_skus.sku_id))))
-	  orders-with-skus-query (-> orders-with-lines-query
-				     (join products-with-skus-query
-					       (where (= :order_lines.product_variant_id :product_variants.id))))
-	  open-orders-with-skus-query  (-> orders-with-skus-query
-					   (select (where (= :orders.status 1))))]
+                                          [[:id			:as :product_variant_id]
+                                           [:product_id		:as :product_variant_product_id]
+                                           [:product_code		:as :product_variant_product_code]
+                                           [:status			:as :product_variant_status]
+                                           [:price_id		:as :product_variant_price_id]])
+          products-table (project (table :products)
+                                  [[:id				:as :product_id]
+                                   [:name				:as :product_name]
+                                   [:description			:as :product_description]
+                                   [:manufacturer_id		:as :product_manufacturer_id]])
+          product-variant-skus-table (project (table :product_variant_skus)
+                                              [[:id			:as :product_variant_sku_id]
+                                               [:product_variant_id	:as :product_variant_sku_product_variant_id]
+                                               [:sku_id		:as :product_variant_sku_sku_id]
+                                               [:quantity		:as :product_variant_sku_quantity]])
+          orders-table   (project (table :orders)
+                                  [[:id				:as :order_id]
+                                   [:customer_id			:as :order_customer_id]
+                                   [:customer_ref			:as :order_customer_ref]
+                                   [:created			:as :order_created]
+                                   [:status				:as :order_status]
+                                   [:created_by			:as :order_created_by]
+                                   [:source_id			:as :order_source_id]
+                                   [:updated			:as :order_updated]
+                                   [:cancellation_reason_id		:as :order_cancellation_reason_id]
+                                   [:expirable			:as :order_expirable]
+                                   [:shipping_method_id		:as :order_shipping_method_id]])
+          order-lines-table (project (table :order_lines)
+                                     [[:id				:as :order_line_id]
+                                      [:order_id			:as :order_line_order_id]
+                                      [:product_variant_id		:as :order_line_product_variant_id]
+                                      [:quantity			:as :order_line_quantity]
+                                      [:status			:as :order_line_status]
+                                      [:updated			:as :order_line_updated]
+                                      [:price_id			:as :order_line_price_id]
+                                      [:shippable_estimate		:as :order_line_shippable_estimate]])
+          orders-with-lines-query (-> orders-table
+                                      (join order-lines-table (where (= :orders.id :order_lines.order_id))))
+          sku-table (project (table :skus) [[:id		:as :sku_id]
+                                            [:stock_code	:as :sku_stock_code]
+                                            [:barcode		:as :sku_barcode]
+                                            [:reorder_quantity	:as :sku_reorder_quantity]
+                                            [:minimum_level	:as :sku_minimum_level]])
+          products-with-skus-query (-> product-variants-table
+                                       (join products-table (where (= :products.id :product_variants.product_id)))
+                                       (join product-variant-skus-table (where (= :product_variants.id :product_variant_skus.product_variant_id)))
+                                       (join sku-table (where (= :skus.id :product_variant_skus.sku_id))))
+          orders-with-skus-query (-> orders-with-lines-query
+                                     (join products-with-skus-query
+                                           (where (= :order_lines.product_variant_id :product_variants.id))))
+          open-orders-with-skus-query  (-> orders-with-skus-query
+                                           (select (where (= :orders.status 1))))]
       (are [x y] (= (-> x (compile nil) interpolate-sql (.replaceAll "SELECT .* FROM" "SELECT * FROM")) y)
-	   open-orders-with-skus-query
-	   (str "SELECT * FROM orders "
-		"JOIN order_lines ON (orders.id = order_lines.order_id) "
-		"JOIN product_variants ON (order_lines.product_variant_id = product_variants.id) "
-		"JOIN product_variant_skus ON (product_variants.id = product_variant_skus.product_variant_id) "
-		"JOIN skus ON (skus.id = product_variant_skus.sku_id) "
-		"JOIN products ON (products.id = product_variants.product_id) "
-		"WHERE (orders.status = 1)"))))
+           open-orders-with-skus-query
+           (str "SELECT * FROM orders "
+                "JOIN order_lines ON (orders.id = order_lines.order_id) "
+                "JOIN product_variants ON (order_lines.product_variant_id = product_variants.id) "
+                "JOIN product_variant_skus ON (product_variants.id = product_variant_skus.product_variant_id) "
+                "JOIN skus ON (skus.id = product_variant_skus.sku_id) "
+                "JOIN products ON (products.id = product_variants.product_id) "
+                "WHERE (orders.status = 1)"))))
 
   (testing "update!"
     (expect [update-vals (has-args [:users ["(id = ?)" 1] {:name "Bob"}])
              find-connection (returns true)]
-      (update! (table :users) (where (= :id 1)) {:name "Bob"}))
+            (update! (table :users) (where (= :id 1)) {:name "Bob"}))
     (expect [update-vals (has-args [:users ["(salary IS NULL)"] {:salary 1000}])
              find-connection (returns true)]
-      (update! (table :users) (where (= :salary nil)) {:salary 1000})))
+            (update! (table :users) (where (= :salary nil)) {:salary 1000})))
 
   (testing "update-in!"
     (expect [update-or-insert-vals (has-args [:users ["(id = ?)" 1] {:name "Bob"}])
              find-connection (returns true)]
-      (update-in! (table :users) (where (= :id 1)) {:name "Bob"}))
+            (update-in! (table :users) (where (= :id 1)) {:name "Bob"}))
     (expect [update-or-insert-vals (has-args [:users ["(salary IS NULL)"] {:salary 1000}])
              find-connection (returns true)]
-      (update-in! (table :users) (where (= :salary nil)) {:salary 1000})))
+            (update-in! (table :users) (where (= :salary nil)) {:salary 1000})))
 
   (testing "difference"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (difference (select (table :users) (where (>= :id 0)))
-                (select (table :users) (where (= :id 1))))
+                     (select (table :users) (where (= :id 1))))
          "(SELECT users.* FROM users WHERE (users.id >= 0)) EXCEPT (SELECT users.* FROM users WHERE (users.id = 1))"
          (-> (select (table :users) (where (>= :id 0)))
              (difference (select (table :users) (where (= :id 1))))
@@ -428,7 +447,7 @@
   (testing "intersection"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (intersection (select (table :users) (where (>= :id 0)))
-                (select (table :users) (where (= :id 1))))
+                       (select (table :users) (where (= :id 1))))
          "(SELECT users.* FROM users WHERE (users.id >= 0)) INTERSECT (SELECT users.* FROM users WHERE (users.id = 1))"
          (-> (select (table :users) (where (>= :id 0)))
              (intersection (select (table :users) (where (= :id 1))))
@@ -493,7 +512,7 @@
              (take 5)
              (sort [:wage]))
          "SELECT * FROM (SELECT t1.* FROM t1 ORDER BY t1.id ASC LIMIT 5 OFFSET 10) ORDER BY wage ASC"))
-  ;TODO: Last two examples should not qualify wage?
+                                        ;TODO: Last two examples should not qualify wage?
 
   (testing "combinations with sort/limit"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -519,5 +538,4 @@
          (-> (take (table :t1) 5)
              (union (table :t2))
              (take 10))
-         "(SELECT t1.* FROM t1 LIMIT 5) UNION (SELECT t2.* FROM t2) LIMIT 10"))
-  )
+         "(SELECT t1.* FROM t1 LIMIT 5) UNION (SELECT t2.* FROM t2) LIMIT 10")))
