@@ -34,12 +34,19 @@
       s
       (recur (.replace s "  " " ")))))
 
+(defn double-quote-wrap
+  [n]
+  (if (.contains n "-")
+    (str "\"" n "\"")
+    n))
+
 (defn nskeyword
   "Converts a namespace qualified keyword to a string"
   [k]
   (if (string? k)
     k
-    (let [[kns nm] ((juxt namespace name) k)]
+    (let [[kns nm] ((juxt namespace name) k)
+          nm (clojure.string/join \. (map double-quote-wrap (clojure.string/split nm #"\.")))]
       (if kns
         (apply str (interpose "/" [kns nm]))
         nm))))

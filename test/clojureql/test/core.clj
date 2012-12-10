@@ -94,12 +94,20 @@
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (table :users)
          "SELECT users.* FROM users"
+         (table :vip-users)
+         "SELECT \"vip-users\".* FROM \"vip-users\""
          (-> (table :users) (project [:id :name]))
          "SELECT users.id,users.name FROM users"
+         (-> (table :users) (project [:second-id :last-name]))
+         "SELECT users.\"second-id\",users.\"last-name\" FROM users"
          (-> (table :users) (aggregate [:avg/wage]))
          "SELECT avg(users.wage) FROM users"
+         (-> (table :vip-users) (aggregate [:avg/vip-years]))
+         "SELECT avg(\"vip-users\".\"vip-years\") FROM \"vip-users\""
          (-> (table :users) (aggregate [[:avg/wage :as :avg]]))
-         "SELECT avg(users.wage) AS avg FROM users"))
+         "SELECT avg(users.wage) AS avg FROM users"
+         (-> (table :vip-users) (aggregate [[:avg/vip-years :as :v-years]]))
+         "SELECT avg(\"vip-users\".\"vip-years\") AS \"v-years\" FROM \"vip-users\""))
 
   (testing "modifiers"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -140,7 +148,14 @@
          "SELECT users.id FROM users WHERE ((users.id != 5) AND ((users.id > 10) OR (users.id < 20)))"
          (-> (table :users)
              (select (where (= :lower/name "bob"))))
-         "SELECT users.* FROM users WHERE (lower(name) = bob)"))
+         "SELECT users.* FROM users WHERE (lower(name) = bob)"
+         (-> (table :users)
+             (select (where (= :second-id 5))))
+         "SELECT users.* FROM users WHERE (users.\"second-id\" = 5)"
+         (-> (table :vip-users)
+             (select (where (and (!= :id 5) (> :vip-years 2) (= :second-id 4)))))
+         (str  "SELECT \"vip-users\".* FROM \"vip-users\" WHERE ((\"vip-users\".id != 5) "
+               "AND (\"vip-users\".\"vip-years\" > 2) AND (\"vip-users\".\"second-id\" = 4))")))
 
   (testing "Nested where predicates"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -166,7 +181,12 @@
          (-> (table :users)
              (join (table :salary) (where (= :users.id :salary.id)))
              (project [:salary.wage :as :something]))
-         "SELECT salary.wage AS something FROM users JOIN salary ON (users.id = salary.id)"))
+         "SELECT salary.wage AS something FROM users JOIN salary ON (users.id = salary.id)"
+         (-> (table :vip-users)
+             (join (table :year-end-bonus) (where (= :vip-users.second-id :year-end-bonus.id)))
+             (project [:year-end-bonus.bonus-amount :as :other-thing]))
+         (str "SELECT \"year-end-bonus\".\"bonus-amount\" AS \"other-thing\" FROM \"vip-users\" "
+              "JOIN \"year-end-bonus\" ON (\"vip-users\".\"second-id\" = \"year-end-bonus\".id)")))
 
   (testing "joins"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
@@ -174,24 +194,45 @@
              (join (table :salary) :id)
              (project [:users.id :salary.wage]))
          "SELECT users.id,salary.wage FROM users JOIN salary USING(id)"
+         (-> (table :vip-users)
+             (join (table :year-end-bonus) :id)
+             (project [:vip-users.id :year-end-bonus.bonus-amount]))
+         "SELECT \"vip-users\".id,\"year-end-bonus\".\"bonus-amount\" FROM \"vip-users\" JOIN \"year-end-bonus\" USING(id)"
          (-> (table :users)
              (join (table :salary) (where (= :users.id :salary.id)))
              (project [:users.id :salary.wage]))
-         "SELECT users.id,salary.wage FROM users JOIN salary ON (users.id = salary.id)"))
+         "SELECT users.id,salary.wage FROM users JOIN salary ON (users.id = salary.id)"
+         (-> (table :vip-users)
+             (join (table :salary) (where (= :vip-users.second-id :salary.total-wage)))
+             (project [:vip-users.second-id :salary.wage]))
+         (str "SELECT \"vip-users\".\"second-id\",salary.wage FROM \"vip-users\" "
+              "JOIN salary ON (\"vip-users\".\"second-id\" = salary.\"total-wage\")")))
 
   (testing "ordering in joins"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (-> (table :users)
              (join (table :salary) (where (= :wages.id :salary.id)))
              (join (table :wages) (where (= :wages.id :users.id))))
-         "SELECT users.*,salary.*,wages.* FROM users JOIN wages ON (wages.id = users.id) JOIN salary ON (wages.id = salary.id)"))
+         "SELECT users.*,salary.*,wages.* FROM users JOIN wages ON (wages.id = users.id) JOIN salary ON (wages.id = salary.id)"
+         (-> (table :vip-users)
+             (join (table :year-end-bonus) (where (= :the-amount.a-id :year-end-bonus.id)))
+             (join (table :the-amount) (where (= :the-amount.a-id :vip-users.id))))
+         (str "SELECT \"vip-users\".*,\"year-end-bonus\".*,\"the-amount\".* FROM \"vip-users\" "
+              "JOIN \"year-end-bonus\" ON (\"the-amount\".\"a-id\" = \"year-end-bonus\".id) "
+              "JOIN \"the-amount\" ON (\"the-amount\".\"a-id\" = \"vip-users\".id)")))
 
   (testing "ordering in joins with table alias"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
          (-> (table {:users :u})
              (join (table {:salary :s}) (where (= :w.id :s.id)))
              (join (table {:wages :w}) (where (= :w.id :u.id))))
-         "SELECT u.*,s.*,w.* FROM users u JOIN wages w ON (w.id = u.id) JOIN salary s ON (w.id = s.id)"))
+         "SELECT u.*,s.*,w.* FROM users u JOIN wages w ON (w.id = u.id) JOIN salary s ON (w.id = s.id)"
+         (-> (table {:vip-users :v-users})
+             (join (table {:year-end-bonus :y}) (where (= :w.id :y.b-id)))
+             (join (table {:wages :w-1}) (where (= :w-1.id :v-users.second-id))))
+         (str "SELECT \"v-users\".*,y.*,\"w-1\".* FROM \"vip-users\" \"v-users\" "
+              "JOIN \"year-end-bonus\" y ON (w.id = y.\"b-id\") "
+              "JOIN wages \"w-1\" ON (\"w-1\".id = \"v-users\".\"second-id\")")))
 
   (testing "renaming in joins"
     (are [x y] (= (-> x (compile nil) interpolate-sql) y)
