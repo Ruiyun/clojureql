@@ -329,8 +329,8 @@
       (with-meta this (meta return))))
 
   (disj! [this predicate]
-     (with-cnx cnx
-       (delete-rows tname (into [(str predicate)] (:env predicate))))
+    (with-cnx cnx
+      (delete-rows (nskeyword tname) (into [(str predicate)] (:env predicate))))
     this)
 
   (update-in! [this pred record]
